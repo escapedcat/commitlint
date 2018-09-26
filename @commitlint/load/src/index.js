@@ -7,6 +7,7 @@ import merge from 'lodash.merge';
 import mergeWith from 'lodash.mergewith';
 import pick from 'lodash.pick';
 import resolveFrom from 'resolve-from';
+// Import chalk from 'chalk';
 
 const w = (a, b) => (Array.isArray(b) ? b : undefined);
 const valid = input => pick(input, 'extends', 'rules', 'parserPreset');
@@ -89,6 +90,13 @@ async function loadConfig(cwd, configPath) {
 	if (local) {
 		return local;
 	}
+	// Because local is `null`
+	// throw new Error(`123`);
+
+	console.log('NEIN DER ZWERG DAS IST JA OTTO');
+
+	// This does not show up in tests
+	// chalk.yellow(`⚠ ${chalk.bold('config file')} may not be empty.`);
 
 	return {};
 }

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 require('babel-polyfill'); // eslint-disable-line import/no-unassigned-import
 
-const format = require('@commitlint/format');
 const load = require('@commitlint/load');
 const lint = require('@commitlint/lint');
 const read = require('@commitlint/read');
-const chalk = require('chalk');
 const meow = require('meow');
 const merge = require('lodash.merge');
 const pick = require('lodash.pick');
 const stdin = require('get-stdin');
+const resolveFrom = require('resolve-from');
+const resolveGlobal = require('resolve-global');
 
 const pkg = require('../package');
 const help = require('./help');
@@ -63,6 +63,12 @@ const flags = {
 		description: 'lower end of the commit range to lint; applies if edit=false',
 		type: 'string'
 	},
+	format: {
+		alias: 'o',
+		default: null,
+		description: 'output format of the results',
+		type: 'string'
+	},
 	'parser-preset': {
 		alias: 'p',
 		description: 'configuration preset to use for conventional-commits-parser',
@@ -113,7 +119,6 @@ async function main(options) {
 	const fromStdin = checkFromStdin(raw, flags);
 
 	const range = pick(flags, 'edit', 'from', 'to');
-	const fmt = new chalk.constructor({enabled: flags.color});
 
 	const input = await (fromStdin ? stdin() : read(range, {cwd: flags.cwd}));
 
@@ -135,34 +140,45 @@ async function main(options) {
 	const loaded = await load(getSeed(flags), loadOpts);
 	const parserOpts = selectParserOpts(loaded.parserPreset);
 	const opts = parserOpts ? {parserOpts} : {parserOpts: {}};
+	const format = loadFormatter(loaded, flags);
 
 	// Strip comments if reading from `.git/COMMIT_EDIT_MSG`
 	if (range.edit) {
 		opts.parserOpts.commentChar = '#';
 	}
 
-	return Promise.all(
-		messages.map(async message => {
-			const report = await lint(message, loaded.rules, opts);
-			const formatted = format(report, {color: flags.color});
-			const input =
-				report.errors.length > 0
-					? `\n${report.input}\n`
-					: message.split('\n')[0];
-
-			if (!flags.quiet) {
-				console.log(`${fmt.grey('⧗')}   input: ${fmt.bold(input)}`);
-				console.log(formatted.join('\n'));
-			}
-
-			if (report.errors.length > 0) {
-				const error = new Error(formatted[formatted.length - 1]);
-				error.type = pkg.name;
-				throw error;
-			}
-			console.log('');
-		})
+	const results = await Promise.all(
+		messages.map(message => lint(message, loaded.rules, opts))
 	);
+
+	const report = results.reduce(
+		(info, result) => {
+			info.valid = result.valid ? info.valid : false;
+			info.errorCount += result.errors.length;
+			info.warningCount += result.warnings.length;
+			info.results.push(result);
+
+			return info;
+		},
+		{
+			valid: true,
+			errorCount: 0,
+			warningCount: 0,
+			results: []
+		}
+	);
+
+	const output = format(report, {color: flags.color});
+
+	if (!flags.quiet) {
+		process.stdout.write(output);
+	}
+
+	if (!report.valid) {
+		const err = new Error(output);
+		err.type = pkg.name;
+		throw err;
+	}
 }
 
 function checkFromStdin(input, flags) {
@@ -199,7 +215,7 @@ function getEditValue(flags) {
 		}
 		return process.env[flags.env];
 	}
-	const edit = flags.edit;
+	const {edit} = flags;
 	// If the edit flag is set but empty (i.e '-e') we default
 	// to .git/COMMIT_EDITMSG
 	if (edit === '') {
@@ -244,6 +260,20 @@ function selectParserOpts(parserPreset) {
 	}
 
 	return parserPreset.parserOpts;
+}
+
+function loadFormatter(config, flags) {
+	const moduleName = flags.format || config.formatter;
+	const modulePath =
+		resolveFrom.silent(__dirname, moduleName) ||
+		resolveFrom.silent(flags.cwd, moduleName) ||
+		resolveGlobal.silent(moduleName);
+
+	if (modulePath) {
+		return require(modulePath);
+	}
+
+	throw new Error(`Using format ${moduleName}, but cannot find the module.`);
 }
 
 // Catch unhandled rejections globally

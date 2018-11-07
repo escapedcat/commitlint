@@ -10,7 +10,8 @@ import resolveFrom from 'resolve-from';
 // Import chalk from 'chalk';
 
 const w = (a, b) => (Array.isArray(b) ? b : undefined);
-const valid = input => pick(input, 'extends', 'rules', 'parserPreset');
+const valid = input =>
+	pick(input, 'extends', 'rules', 'parserPreset', 'formatter');
 
 export default async (seed = {}, options = {cwd: process.cwd()}) => {
 	const loaded = await loadConfig(options.cwd, options.file);
@@ -18,7 +19,10 @@ export default async (seed = {}, options = {cwd: process.cwd()}) => {
 
 	// Merge passed config with file based options
 	const config = valid(merge(loaded.config, seed));
-	const opts = merge({extends: [], rules: {}}, pick(config, 'extends'));
+	const opts = merge(
+		{extends: [], rules: {}, formatter: '@commitlint/format'},
+		pick(config, 'extends')
+	);
 
 	// Resolve parserPreset key
 	if (typeof config.parserPreset === 'string') {
@@ -47,6 +51,11 @@ export default async (seed = {}, options = {cwd: process.cwd()}) => {
 	) {
 		preset.parserPreset.parserOpts = (await preset.parserPreset
 			.parserOpts).parserOpts;
+	}
+
+	// Resolve config-relative formatter module
+	if (typeof config.formatter === 'string') {
+		preset.formatter = resolveFrom.silent(base, config.formatter) || config.formatter;
 	}
 
 	// Execute rule config functions if needed

@@ -166,7 +166,7 @@ test('should pick up parser preset and fail accordingly', async t => {
 		'type(scope): subject'
 	);
 	t.is(actual.code, 1);
-	t.true(actual.stdout.includes('message may not be empty [subject-empty]'));
+	t.true(actual.stdout.includes('may not be empty'));
 });
 
 test('should pick up parser preset and succeed accordingly', async t => {
